@@ -8,52 +8,45 @@ const eventLogger = new EventLogger(bunyan.createLogger({
 }));
 
 var hapi_plugin = {
-  register: function(server, options, next) {
-    eventLogger.watch(server, { ignorePaths: ['/ignored'] });
-    next();
-  }
-};
-
-hapi_plugin.register.attributes = {
+  register: function(server, options) {
+    return eventLogger.watch(server, { ignorePaths: ['/ignored'] });
+  },
   name: 'bunyan-logger',
-  version: '1.0.0'
+  version: '1.0.0',
 };
 
 describe('watch Hapi server', function () {
   var server;
 
-  before(function() {
-    server = new Hapi.Server();
-    server.connection({ port: 9876 });
+  before(async function() {
+    server = Hapi.server({ host: 'localhost', port: 9876 });
     server.route({
       method: 'GET',
       path: '/',
-      handler: function(request, reply) {
-        return reply('Hello world!');
+      handler: function(request) {
+        return 'Hello world!';
       }
     });
     server.route({
       method: 'GET',
       path: '/ignored',
-      handler: function(request, reply) {
-        return reply('ignored!');
+      handler: function(request) {
+        return 'ignored!';
       }
     });
     server.route({
       method: 'GET',
       path: '/slow',
-      handler: function(request, reply) {
-        setTimeout(function() {
-          return reply('Hellooooooo sloooooow woooooorld!');
-        }, 1500);
+      handler: function(request) {
+        return new Promise((resolve) =>
+          setTimeout(function () {
+            return resolve('Hellooooooo sloooooow woooooorld!');
+          }, 1500)
+        );
       }
     });
-    server.start(function() {});
-    server.register(hapi_plugin, function(err) {
-      if (err) {
-        console.log('Failed to load Hapi plugin');
-      }
-    });
+    await server.register(hapi_plugin);
+    return server.start();
   });
 
   it('should log response time', function (done) {
@@ -72,7 +65,7 @@ describe('watch Hapi server', function () {
       assert.isNumber(log_event.took);
       assert.isAbove(log_event.took, 0);
       assert.equal(log_event.log_type, 'request_aborted');
-      assert.isString(log_event.req.id);
+      assert.isString(log_event.req.info.id);
       assert.equal(msg, 'request aborted');
       done();
     };
